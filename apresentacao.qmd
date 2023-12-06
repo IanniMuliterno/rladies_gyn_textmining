@@ -1,0 +1,552 @@
+---
+title: "Text mining com R"
+subtitle: "O que você precisa dominar antes da análise de sentimentos"
+author: 
+  - "[Ían Muliterno](https://www.linkedin.com/in/iannimuliterno/)"
+execute: 
+  echo: true
+format: 
+  rladies-revealjs:
+    footer: "[R-Ladies](https://rladies.org/) theme for [Quarto Presentations](https://quarto.org/docs/presentations/revealjs/index.html). Code available on [GitHub](https://github.com/beatrizmilz/quarto-rladies-theme)."
+incremental: false
+embed-resources: true
+---
+
+## Ministrante
+
+- Ían Muliterno
+- Graduado em Estatística na Universidade Federal de Pernambuco
+- Cientista de dados na Unilever
+- Co-organizador da R-Ladies São Paulo, uma comunidade que tem como objetivo promover a diversidade de gênero na comunidade da linguagem R.
+- Escritor
+
+## Pré-requisitos
+
+
+-   `R` e `RStudio` instalados no seu computador:
+
+-   Links para instalação:
+
+    -   [R](https://cran.r-project.org/bin/windows/base/)
+    -   [RStudio](https://rstudio.com/products/rstudio/download/)
+
+- Domínio do básico na programação em R (mandatório) 
+- Experiência com os pacotes `dplyr` e `ggplot`
+
+## O que vai rolar hoje 
+- Regex 
+- Introdução ao pacote stringr
+- Introdução a text mining
+
+- What's the point? 
+
+Os tópicos discutidos hoje são a base para executar MUITA coisa legal e relevante hoje em dia, como classificação textual, análise de sentimentos, modelos de linguagem (o chatGPT é um grande modelo de linguagem).
+
+## O que é text mining
+
+Sabendo que tirar conclusões e insights de uma tabela organizada, se chama Data mining, vamos chamar text mining de Data mining textual. 
+
+<img src="img/BlockDigramofTextMining.png" style="display: block; margin-left: auto; margin-right: auto;"/>
+
+:::footer
+Créditos da imagem [geeks for geeks](https://www.geeksforgeeks.org/text-mining-in-data-mining/).
+:::
+
+## Antes de conhecer a base...
+ Vale ressaltar as diferenças entre tibble, que vamos usar aqui, e dataframe. 
+ 
+ Tibble é uma versão mais organizada de dataframe, e segura, por ter características que previnem erros, como: 
+ 
+ - Tibbles não aceitam colunas novas que não são exatamente do mesmo tamanho da base. 
+```{r echo = T}
+library(tidyverse)
+library(tidytext)
+library(rjson)
+library(wordcloud2)
+library(magick)
+library(tm)
+tib <- tibble(str = c("a","b","c","d"), int = c(1,2,3,4))
+# tente rodar o código abaixo
+#tib$newcol <- c(5,6)
+tib
+```
+
+## atribuindo coluna corretamente ao tibble
+```{r}
+tib$newcol <- rep(c(5,6),2)
+tib
+```
+
+ 
+## Dataframe apenas recicla, se algo colocado nele como coluna for menor. 
+```{r echo = T}
+df <- data.frame(str = c("a","b","c","d"), int = c(1,2,3,4))
+df
+df$newcol <- c(5,6)
+df
+```
+ 
+## Ao ser impressa uma coluna de uma tibble, ela permanece como tibble, se essa coluna estivesse num dataframe, seria impressa como vetor. 
+
+```{r}
+is_tibble(tib[,"str"])
+is.data.frame(df[,"str"])
+```
+ 
+ 
+ Mais diferenças [aqui](https://jtr13.github.io/cc21fall1/tibble-vs.-dataframe.html#:~:text=Tibbles%20preserve%20all%20the%20variable,string%20into%20factor%20by%20default).
+ 
+ 
+## A nossa base
+
+A base de hoje se chama [`Harry Potter Dialogue (HPD)`](https://nuochenpku.github.io/HPD.github.io/download), base com  1042 diálogos dos livros da série Harry Potter, o que corresponde ao conjunto de treino fornecido pelo site, 149 diálogos estão no conjunto de teste e não serão utilizados aqui. O site, HPD, é mantido por [Nuo Chen](https://nuochenpku.github.io/) e [Yan Wang](https://libertywing.github.io/yanwang.github.io/). 
+
+<img src="img/hpd.png" style="display: block; margin-left: auto; margin-right: auto;"/>
+
+## Um desabafo
+ 
+ <img src="img/vila_antes.jpg" style="display: block; margin-left: auto; margin-right: auto;"/>
+ 
+## Regex
+
+ A library `stringr` já está contida no tidyverse, então podemos ir direto para o código e começar a entender o que são:
+ 
+:::: {.columns}
+
+::: {.column width="50%"}
+ - Elementos 
+    - Literais `a,5,#,&, etc`
+    - Wildcard `.`
+    - Escaped  `\x` 
+    - Grupos `()` 
+  
+:::
+
+
+::: {.column width="50%"}
+ - Quantificadores 
+    - quantificador um ou mais (greedy) `+`
+    - quantificador zero ou mais (greedy) `*`
+    - quantificador zero ou um `?`
+:::
+::::
+
+
+
+## Literais
+
+```{r}
+letters = c("abc", "abcd", "abcdefg", "xyz")
+
+str_view(letters, "abc")
+#se usamos uma string maior, o literal so dá match SE exister aquela string completa
+str_match(letters, "abcd")
+```
+
+```{r}
+# completa e na mesma ordem
+numbers = c("42.", "42!", "24")
+str_view(numbers, "42")
+```
+## Wildcard
+<img src="img/curinga.png" style="display: block; margin-left: auto; margin-right: auto;"/>
+
+Um metacaracter que pode representar qualquer caracter
+```{r}
+#créditos da inspiração para este exemplo: https://www.devsv.com.br/regex/2017/03/31/falando-sobre-expressoes-regulares-primeiros-metacaracteres.html
+acentos <- c(
+  'eu nao curto nao.',
+  'eu acho inconcebível não gostar de acentos!'
+)
+
+str_view(acentos,'n.o')
+```
+
+---
+
+Aqui acontecem duas coisas interessantes. O `.` no regex não da match com o `.` na frase e `nco` ou `nto` não nos interessa... Como podemos resolver se quisermos dar match no `.` ou garantir que match apenas com `nao` ou `não`? 
+
+## Wildcard
+
+segura o primeiro problema, vamos focar em resolver o `nao`+`não`:
+```{r}
+str_match(acentos,'n[aã]o')
+```
+---
+Mas perae, tem alguma coisa errada. a primeira frase tem mais de um `nao`. Esse é um ponto de cuidado que nos leva ao:
+
+## Primeiro hack do stringr
+
+Reparam algo estranho no match do `nao`? Muitas funções do stringr tem uma versão que termina com `all`, e você *PRECISA* selecionar ela caso queira encontrar todos os terminar na string.
+```{r}
+str_match_all(acentos,'n[aã]o')
+
+```
+
+Experimentem rodar `stringr::all` para ver quais as funções podem te aplicar essa pegadinha
+
+## Escaped e outros metacaracteres que envolvem `\`
+
+lembra do problema de dar match no ponto? Chegamos na solução
+
+```{r}
+str_view(acentos,'\\.')
+```
+
+```{r}
+str_view('www.estesite.com.br','\\.')
+#caracteres dentro de listas são tratados como literais
+str_view('www.estesite.com.br','[.]') 
+```
+
+## e se eu quisesse dar match em dígitos?
+
+```{r}
+favorites = c(
+  "My favorite is 42",
+  "I like 10",
+  "Umm, 33"
+)
+#match em qualquer digito
+str_match(favorites, "\\d")
+```
+
+## `Dígito` e quantificador `um ou mais`
+```{r}
+str_match(favorites, "\\d+")
+```
+
+```{r}
+favorites2 = c(
+  "My favorite is 42 or 12",
+  "I like 10 and 15",
+  "Umm, 33 and 35"
+)
+
+str_match_all(favorites2, "\\d+")
+```
+
+## `Não Dígito` e quantificador `um ou mais`?
+```{r}
+
+#não dígitos 
+str_match(favorites, "\\D")
+str_match_all(favorites2, "\\D+")
+```
+
+## `Não Dígito` e quantificador `um ou mais`?
+
+```{r}
+str_match_all(favorites2, "\\w+")
+```
+
+### se quiséssemos match só em "non-words"?
+
+Vamos para o primeiro exercício! Como ficaria o regex?
+
+
+## Exercício 1 - Resposta
+```{r}
+str_match_all(favorites2, "\\W+")
+```
+
+## Porque esses regex "negativos" são importantes?
+
+Você pode estar se perguntando. Eis aqui um exemplo, tokenização de texto em unidades menores. Frequentemente essas unidades menores são palavras, então podemos fazer o seguinte:
+```{r}
+unlist(str_split("Eu amo programar em R!", "\\W+"))
+```
+
+Validar entrada de dados pelo usuário.
+```{r}
+nome_usuario <- "Seu nome"
+if (length(str_detect(nome_usuario, "\\W+")) == 0) {
+   stop("Nome, por favor. >=( ")
+}
+
+```
+
+
+## Escaped e quantificador "um ou mais"
+
+```{r}
+str_match_all(favorites2, "\\s+")
+```
+
+## Exercício 2
+
+O que acontece se trocarmos `s` por `S`?
+
+## Exercício 2 - resposta
+```{r}
+str_match_all(favorites2, "\\S+")
+```
+
+## `Wildcard` e quantificador `um ou mais`
+```{r}
+fruit = c("apple", "blueberry", "apricot", "asian pear", "banana", "fig")
+
+str_match(fruit, ".+")
+```
+
+## `Literais` + `wildcard` + `um ou mais`
+```{r}
+str_match(fruit, "ap.+")
+```
+
+```{r}
+str_match(fruit, "[ab].+")
+```
+## Diferença entre `um ou mais` e `zero ou mais`
+```{r}
+empty = ""
+
+str_match(empty, ".+")
+```
+
+```{r}
+str_match(empty, ".*")
+```
+
+## Aplicações
+
+
+```{r}
+grape_things = c("grape", "grapefruit", "grapevine", "grapeseed oil")
+
+str_match(grape_things, "grape.+")
+```
+
+```{r}
+str_match(grape_things, "grape.*")
+```
+
+## Mas e o quantificador `zero ou um`
+```{r}
+str_view("organizeeeeee, organização, organiz", "organiz(e|ação)?")
+str_view("organizeeeeee, organização, organiz", "organiz(e|ação)+")
+str_view("organizeeeeee, organização, organiz", "organiz(e|ação)*")
+```
+
+## Aplicações e uso do `^`
+
+```{r}
+cat_things = c("caterpillar", "catapult", "cattle", "house cat")
+
+str_match(cat_things, "cat.*")
+```
+
+```{r}
+str_match(cat_things, "^cat.*")
+```
+
+```{r}
+str_match(cat_things, ".*cat")
+```
+
+## O `$` 
+```{r}
+str_match(cat_things, ".*cat$")
+```
+```{r}
+fruit
+```
+
+```{r}
+str_match(fruit, "^(ap|ban).*$")
+```
+
+```{r}
+captures = c("bulbasaur, flag, photo")
+
+str_match(captures, "(\\w*)\\W*(\\w*)\\W*(\\w*)")
+```
+
+## Antes de começar com os diálogos de HP...
+Aqui estão mais alguns exemplos de regex um pouco mais complexos.
+
+```{r}
+repetitions = c("banana", "papaya", "cancan")
+
+str_match(repetitions, "(na|pa|can){2}")
+```
+## mais slides
+```{r}
+pattern = '.*(\\d{3}).*(\\d{3}).*(\\d{4})'
+
+phone_numbers = c(
+  "(541) 471 3918",
+  "(603)281-0308",
+  "Home: 425-707-7220",
+  "(814)-462-8074",
+  "9704443106",
+  "I don't have a phone."
+)
+
+str_match(phone_numbers, pattern)
+```
+## mais slides
+
+```{r}
+
+
+hpd <- fromJSON(file="en_train_set.json")
+
+hpd[1:2]
+
+```
+
+## tratando a entrada
+```{r}
+class(hpd)
+hpd[[1]]$dialogue
+hpd[[1]]$position
+
+```
+
+## tratando a entrada
+```{r}
+
+#map + pluck
+extracted_dialogue <- map(hpd, pluck, "dialogue")
+extracted_dialogue$`Session-1`
+#queremos session, locutores e dialogo
+session_names <- rep(names(extracted_dialogue), 
+                     times = sapply(extracted_dialogue, length))
+
+extracted_dialogue$`Session-1`
+
+ str_split_fixed(string = tibble(
+                          dialogue = unlist(extracted_dialogue)
+                          )$dialogue,
+                 pattern = ':',n=2) |> head()
+
+ #memo: fazer todos os códigos passo a passo
+ # explicando porque usamos str_trim
+ 
+ dialogo_tb <- str_split_fixed(string = tibble(
+   dialogue = unlist(extracted_dialogue)
+ )$dialogue,
+ pattern = ':',n=2) |> 
+   as_tibble() |> 
+   mutate(session = session_names,
+          V1 = str_trim(V1)) |> 
+   select(session, personagem = V1, dialogo = V2)
+```
+
+##  questao 1HPD: personagem mais mencionado nos dialogos
+
+```{r}
+
+ character_mentions <- sapply( #aplica função em cada elemento
+   unique(dialogo_tb$personagem), #lista person. únicos
+   function(char) { #func que detecta mencoes a personagens em cada dialogo
+   sum(
+     str_detect(dialogo_tb$dialogo, fixed(char)) # fixed() = correspondencia exata
+     )
+ }
+ )
+
+ mentions_df <- data.frame(character = unique(dialogo_tb$personagem),
+                           mentions = character_mentions)
+ 
+ 
+```
+
+## questao 1HPD: personagem mais mencionado nos dialogos
+```{r}
+
+ mentions_df |> 
+   arrange(desc(mentions)) |> 
+   slice(1:20) |> 
+   ggplot(aes(y = character, x = mentions)) +
+   geom_bar(stat = 'identity')
+ 
+```
+
+## questao 2HPD: Cumprimentos mais usados
+```{r}
+# cumprimentos
+ greetings <- c("Hello", "Hi", "Greetings", "Hey")
+ 
+ # extraindo eles do dialogo
+ greetings_found <- sapply(greetings, function(greet) {
+   unlist(str_extract_all(dialogo_tb$dialogo, fixed(greet)))
+ })
+ 
+ # resultados
+ greetings_found
+ 
+```
+
+## questao 3HPD: Qual diálogo mais curto e o mais longo?
+
+```{r}
+ # comprimento de cada dialogo
+ dialogo_tb$length <- str_length(dialogo_tb$dialogo)
+ 
+ # identificando o dialogo mais longo
+ longest_dialogue <- dialogo_tb |> 
+   arrange(desc(length)) |>
+   slice(1)
+ 
+ #e o mais curto
+ mini_dialog <- dialogo_tb |> 
+   arrange(length) |>
+   slice(1)
+ # resultados
+ longest_dialogue |> View()
+ mini_dialog |> View()
+```
+
+## questao 4HPD: Quem mais menciona Harry, o Ron ou a Hermione?
+```{r}
+
+ # conta quantas vezes Ron menciona Harry
+ ron_mentions_potter <- sum(str_detect(
+   dialogo_tb$dialogo[dialogo_tb$personagem == "Ron"], "Harry"))
+ 
+ # conta quantas vezes Hermione menciona Harry
+ hermione_mentions_harry <- sum(str_detect(
+   dialogo_tb$dialogo[dialogo_tb$personagem == "Hermione"], "Harry"))
+ 
+ # Displaying the results
+ cat("Ron menciona 'Harry':", ron_mentions_potter, "vezes\n")
+ cat("Hermione menciona 'Harry':", hermione_mentions_harry, "vezes")
+```
+
+## Gráfico de freq. versus Wordcloud
+```{r}
+
+ # Exemplo de dados de texto
+ texto <- dialogo_tb$dialogo[50:300]
+ 
+ # Processar e criar uma tabela de frequência das palavras
+ corpus <- Corpus(VectorSource(texto))
+ dtm <- TermDocumentMatrix(corpus)
+ matriz <- as.matrix(dtm)
+ frequencia <- sort(rowSums(matriz), decreasing = TRUE)
+ dados <- data.frame(word = names(frequencia), freq = frequencia) |> 
+   anti_join(stop_words) |> 
+   filter(word != "—")
+ 
+ wordcloud2(dados,shape = 'star',size = 0.5)
+```
+
+## outro exemplo
+```{r}
+
+ wordcloud2(dados, figPath = "img/raio.png", size = 0.5)
+```
+
+## Exemplo simples de análise de sentimentos
+
+## Wrap up
+
+
+## Agradecimentos
+- Todos envolvidos no evento
+- R-ladies SP
+- R-ladies Gyn
+- [Fernanda](https://www.fernandakellyrs.com/)
+
