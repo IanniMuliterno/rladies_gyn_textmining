@@ -68,11 +68,11 @@ library(tm)
 tib <- tibble(str = c("a","b","c","d"), int = c(1,2,3,4))
 # tente rodar o código abaixo
 #tib$newcol <- c(5,6)
-tib
 ```
 
 ## atribuindo coluna corretamente ao tibble
 ```{r}
+tib
 tib$newcol <- rep(c(5,6),2)
 tib
 ```
@@ -257,6 +257,7 @@ Você pode estar se perguntando. Eis aqui um exemplo, tokenização de texto em 
 unlist(str_split("Eu amo programar em R!", "\\W+"))
 ```
 
+## 
 Validar entrada de dados pelo usuário.
 ```{r}
 nome_usuario <- "Seu nome"
@@ -335,7 +336,7 @@ cat_things = c("caterpillar", "catapult", "cattle", "house cat")
 
 str_match(cat_things, "cat.*")
 ```
-
+- inicio da sentença
 ```{r}
 str_match(cat_things, "^cat.*")
 ```
@@ -344,7 +345,7 @@ str_match(cat_things, "^cat.*")
 str_match(cat_things, ".*cat")
 ```
 
-## O `$` 
+## O `$`  - fim da sentença
 ```{r}
 str_match(cat_things, ".*cat$")
 ```
@@ -352,12 +353,10 @@ str_match(cat_things, ".*cat$")
 fruit
 ```
 
-```{r}
-str_match(fruit, "^(ap|ban).*$")
-```
+
 
 ```{r}
-captures = c("bulbasaur, flag, photo")
+captures = c("item1, item2, item3")
 
 str_match(captures, "(\\w*)\\W*(\\w*)\\W*(\\w*)")
 ```
@@ -370,7 +369,7 @@ repetitions = c("banana", "papaya", "cancan")
 
 str_match(repetitions, "(na|pa|can){2}")
 ```
-## mais slides
+## Exemplos um pouco mais complexos
 ```{r}
 pattern = '.*(\\d{3}).*(\\d{3}).*(\\d{4})'
 
@@ -385,7 +384,7 @@ phone_numbers = c(
 
 str_match(phone_numbers, pattern)
 ```
-## mais slides
+## Lendo a base de dados
 
 ```{r}
 
@@ -416,10 +415,13 @@ session_names <- rep(names(extracted_dialogue),
 
 extracted_dialogue$`Session-1`
 
- str_split_fixed(string = tibble(
-                          dialogue = unlist(extracted_dialogue)
-                          )$dialogue,
-                 pattern = ':',n=2) |> head()
+tibble_hp <- tibble(dialogue = unlist(extracted_dialogue)
+)
+
+# antes de fechar o pre-processamento, vamos entender a str_split_fixed
+str_split_fixed(string = tibble_hp$dialogue,
+                pattern = ':',n=2) |> head()
+
 
  #memo: fazer todos os códigos passo a passo
  # explicando porque usamos str_trim
@@ -448,7 +450,8 @@ extracted_dialogue$`Session-1`
  )
 
  mentions_df <- data.frame(character = unique(dialogo_tb$personagem),
-                           mentions = character_mentions)
+                           mentions = character_mentions)|> 
+  filter(character != "hat")
  
  
 ```
@@ -459,7 +462,7 @@ extracted_dialogue$`Session-1`
  mentions_df |> 
    arrange(desc(mentions)) |> 
    slice(1:20) |> 
-   ggplot(aes(y = character, x = mentions)) +
+   ggplot(aes(y = reorder(character, +mentions), x = mentions)) +
    geom_bar(stat = 'identity')
  
 ```
@@ -540,13 +543,43 @@ extracted_dialogue$`Session-1`
 ```
 
 ## Exemplo simples de análise de sentimentos
+```{r}
+Bing <- get_sentiments("bing")
+#obs: existe em portugues tb: https://www.inf.pucrs.br/linatural/wordpress/recursos-e-ferramentas/oplexicon/
+Sentiment <- dialogo_tb |>
+  unnest_tokens(output = word, input = dialogo) |>
+  left_join(Bing, "word") |>
+  filter(is.na(sentiment)==F)
+
+Sentiment |> 
+  group_by(word, sentiment) |>
+  summarise(count = n(), .groups = 'drop') |>
+  arrange(desc(count)) |>
+  slice(1:20) |>
+  ggplot( aes(reorder(word, +count), count, fill = sentiment))+
+  geom_bar(stat = "identity", width = 0.62, alpha = 0.9)+
+  scale_fill_brewer(palette = "Set1")+
+  coord_flip()+
+  labs(title = "palavras mais populares com sentimento associado",
+       subtitle = "Top 20",
+       x = "Word", y = "Frequency", fill = "Sentiment",
+       caption = "© Feito por Ían, inspirado por Michau96/Kaggle")+
+  guides(fill = guide_legend(reverse = T))+
+  theme_minimal()+
+  theme(legend.title.align = 0.5, legend.position = "right", legend.direction = "vertical")
+```
 
 ## Wrap up
 
+Hoje aprendemos a base da análise de texto, 
+- entendemos `regex`, seus elementos e quantificadores mais importantes
+- conhecemos a biblioteca stringr
+- Fizemos análise exploratória dos diálogos da série Harry Potter
+- introduzimos análise de sentimentos
 
 ## Agradecimentos
 - Todos envolvidos no evento
-- R-ladies SP
-- R-ladies Gyn
+- [R-ladies SP](https://rladies-sp.org/) 
+- [R-ladies Gyn](https://www.rladiesgyn.com/)
 - [Fernanda](https://www.fernandakellyrs.com/)
 
